@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web4</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+        }
+        #debug-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 400px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 9999;
+        }
+        .debug-entry {
+            margin: 5px 0;
+            padding: 3px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            word-wrap: break-word;
+        }
+        .debug-error { color: #ff6b6b; }
+        .debug-success { color: #51cf66; }
+        .debug-info { color: #339af0; }
+        .debug-warning { color: #ffd43b; }
+
+        .error-message {
+            padding: 10px;
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid rgba(255, 0, 0, 0.3);
+            border-radius: 4px;
+            color: #ff6b6b;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-panel"></div>
+    <div id="root">
+        <!-- Dynamic content will be loaded here -->
+    </div>
+
+    <script>
+        // Debug utilities
+        const Debug = {
+            panel: null,
+            init() {
+                this.panel = document.getElementById('debug-panel');
+                this.log('Debug panel initialized', 'info');
+            },
+            log(message, type = 'info') {
+                const entry = document.createElement('div');
+                entry.className = `debug-entry debug-${type}`;
+                entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+                this.panel?.insertBefore(entry, this.panel.firstChild);
+                console.log(`[${type.toUpperCase()}] ${message}`);
+            },
+            inspect(obj, label = '') {
+                const message = label ? `${label}: ${JSON.stringify(obj, null, 2)}` : JSON.stringify(obj, null, 2);
+                this.log(message, 'info');
+                console.log(label, obj);
+            },
+            clear() {
+                if (this.panel) this.panel.innerHTML = '';
+            }
+        };
+
+        class Web4Layout {
+            constructor() {
+                Debug.init();
+                this.init();
+            }
+
+            async init() {
+                try {
+                    Debug.log('Initializing Web4Layout', 'info');
+                    await this.queryLayout();
+                } catch (error) {
+                    Debug.log(`Initialization error: ${error.message}`, 'error');
+                    console.error(`Initialization error: ${error.message}`);
+                    throw error;
+                }
+            }
+
+            async queryLayout() {
+                Debug.log('Loading specific layout version', 'info');
+                const layoutId = 'EDcCuXU7HL59PqRqDfErv41Bv1ZsdffA8Gym3hQkV2Rz';
+                
+                try {
+                    Debug.log(`Fetching layout with ID: ${layoutId}`, 'info');
+                    const layoutResponse = await fetch(`https://uploader.irys.xyz/${layoutId}`);
+                    const layout = await layoutResponse.json();
+                    Debug.log('Layout data fetched successfully', 'success');
+                    Debug.inspect(layout, 'Layout Data');
+                    
+                    this.applyLayout(layout);
+                } catch (error) {
+                    Debug.log(`Error fetching layout: ${error.message}`, 'error');
+                    console.error(`Error fetching layout: ${error.message}`);
+                    throw error;
+                }
+            }
+
+            applyLayout(layout) {
+                const root = document.getElementById('root');
+                Debug.log('Applying layout to DOM', 'info');
+                
+                try {
+                    if (layout.html) {
+                        Debug.log('Applying HTML content...', 'info');
+                        Debug.inspect(layout.html, 'HTML Content');
+                        root.innerHTML = layout.html;
+                        Debug.log('HTML content applied', 'success');
+                        
+                        // Check if build container exists
+                        const buildContainer = document.getElementById('build-container');
+                        if (buildContainer) {
+                            Debug.log('Build container found in DOM', 'success');
+                        } else {
+                            Debug.log('Build container not found in DOM', 'warning');
+                        }
+                    }
+                    
+                    if (layout.css) {
+                        Debug.log('Applying CSS styles...', 'info');
+                        const style = document.createElement('style');
+                        style.textContent = layout.css;
+                        document.head.appendChild(style);
+                        Debug.log('CSS styles applied', 'success');
+                    }
+                    
+                    if (layout.js) {
+                        Debug.log('Applying JavaScript code...', 'info');
+                        const script = document.createElement('script');
+                        script.textContent = layout.js.replace(
+                            'https://gateway.irys.xyz/',
+                            'https://uploader.irys.xyz/'
+                        );
+                        document.body.appendChild(script);
+                        Debug.log('JavaScript code applied', 'success');
+
+                        // Check for build widget initialization
+                        setTimeout(() => {
+                            if (window.buildWidgetExports) {
+                                Debug.log('Build widget exports found', 'success');
+                            } else {
+                                Debug.log('Build widget exports not found', 'warning');
+                                Debug.log('Attempting to reload build widget...', 'info');
+                                // Attempt to reload the build widget specifically
+                                loadWidget('build-container', 'build_widget').catch(error => {
+                                    Debug.log(`Failed to reload build widget: ${error.message}`, 'error');
+                                });
+                            }
+                        }, 1000);
+                    }
+
+                    // Monitor wallet connection status
+                    if (window.solana) {
+                        window.solana.on('connect', () => {
+                            Debug.log('Wallet connected', 'success');
+                        });
+                        window.solana.on('disconnect', () => {
+                            Debug.log('Wallet disconnected', 'info');
+                        });
+                        window.solana.on('error', (error) => {
+                            Debug.log(`Wallet error: ${error.message}`, 'error');
+                        });
+                    } else {
+                        Debug.log('Solana wallet not detected', 'info');
+                    }
+
+                    // Check DOM structure after layout application
+                    Debug.log('Final DOM structure:', 'info');
+                    Debug.inspect(root.innerHTML, 'Root HTML');
+                } catch (error) {
+                    Debug.log(`Error applying layout: ${error.message}`, 'error');
+                    console.error(`Error applying layout: ${error.message}`);
+                    throw error;
+                }
+            }
+        }
+
+        // Apply widget function
+        function applyWidget(containerId, widget) {
+            const container = document.getElementById(containerId);
+            Debug.log(`Applying widget to ${containerId}`, 'info');
+            
+            // Clean up any existing scripts for this widget
+            const existingScripts = document.querySelectorAll(`script[data-widget="${containerId}"]`);
+            existingScripts.forEach(script => script.remove());
+            
+            // Clean up any existing styles for this widget
+            const existingStyles = document.querySelectorAll(`style[data-widget="${containerId}"]`);
+            existingStyles.forEach(style => style.remove());
+            
+            if (widget.html) {
+                container.innerHTML = widget.html;
+                Debug.log('Widget HTML applied', 'success');
+            }
+            
+            if (widget.css) {
+                const style = document.createElement('style');
+                style.setAttribute('data-widget', containerId);
+                style.textContent = widget.css;
+                document.head.appendChild(style);
+                Debug.log('Widget CSS applied', 'success');
+            }
+            
+            if (widget.js) {
+                const script = document.createElement('script');
+                script.setAttribute('data-widget', containerId);
+                // Wrap the widget code in an IIFE to avoid global namespace pollution
+                script.textContent = `(function() {
+                    try {
+                        ${widget.js}
+                        Debug.log('Widget JS executed successfully', 'success');
+                    } catch (error) {
+                        Debug.log('Error executing widget JS: ' + error.message, 'error');
+                    }
+                })();`;
+                document.body.appendChild(script);
+                Debug.log('Widget JS applied', 'success');
+            }
+
+            if (widget.init) {
+                const initScript = document.createElement('script');
+                initScript.setAttribute('data-widget', containerId);
+                // Wrap the init code in an IIFE
+                initScript.textContent = `(function() {
+                    try {
+                        ${widget.init}
+                        Debug.log('Widget init executed successfully', 'success');
+                    } catch (error) {
+                        Debug.log('Error executing widget init: ' + error.message, 'error');
+                    }
+                })();`;
+                document.body.appendChild(initScript);
+                Debug.log('Widget init script applied', 'success');
+            }
+        }
+
+        // Load widget function
+        async function loadWidget(containerId, widgetType) {
+            Debug.log(`Loading widget: ${widgetType}`, 'info');
+            try {
+                const query = `query GetWidget {
+                    transactions(
+                        tags: [
+                            { name: "Content-Type", values: ["application/json"] },
+                            { name: "App-Name", values: ["web4"] },
+                            { name: "Type", values: ["${widgetType}"] },
+                            { name: "Version", values: ["1.0.0"] }
+                        ],
+                        first: 1,
+                        order: DESC
+                    ) {
+                        edges {
+                            node {
+                                id
+                                tags {
+                                    name
+                                    value
+                                }
+                            }
+                        }
+                    }
+                }`;
+
+                const response = await fetch('https://uploader.irys.xyz/graphql', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+
+                const result = await response.json();
+                Debug.log(`Widget query result for ${widgetType}:`, 'info');
+                Debug.inspect(result);
+
+                if (result.data?.transactions?.edges?.length > 0) {
+                    const widgetId = result.data.transactions.edges[0].node.id;
+                    Debug.log(`Found ${widgetType} widget ID: ${widgetId}`, 'success');
+                    const widgetResponse = await fetch(`https://uploader.irys.xyz/${widgetId}`);
+                    const widget = await widgetResponse.json();
+                    
+                    // Clean up any existing widget exports
+                    if (window[`${widgetType}Exports`]) {
+                        delete window[`${widgetType}Exports`];
+                    }
+                    
+                    applyWidget(containerId, widget);
+                    Debug.log(`${widgetType} widget applied successfully`, 'success');
+                } else {
+                    Debug.log(`No widget found for type: ${widgetType}`, 'error');
+                    const container = document.getElementById(containerId);
+                    if (container) {
+                        container.innerHTML = `<div class="error-message">Error: Widget not found</div>`;
+                    }
+                }
+            } catch (error) {
+                Debug.log(`Error loading ${widgetType} widget: ${error.message}`, 'error');
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = `<div class="error-message">Error: Unable to load widget</div>`;
+                }
+            }
+        }
+
+        // Initialize Web4 layout when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            Debug.log('DOM Content Loaded, initializing Web4Layout', 'info');
+            new Web4Layout();
+        });
+
+        // Global error handling
+        window.onerror = function(msg, url, line, col, error) {
+            Debug.log(`Global error: ${msg} at ${url}:${line}:${col}`, 'error');
+            return false;
+        };
+
+        // Monitor script loading
+        document.addEventListener('load', function(event) {
+            if (event.target.tagName === 'SCRIPT') {
+                Debug.log(`Script loaded: ${event.target.src || 'inline script'}`, 'info');
+            }
+        }, true);
+
+        // Monitor DOM mutations
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList') {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.id === 'build-container') {
+                            Debug.log('Build container added to DOM', 'success');
+                        }
+                    });
+                }
+            });
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+    </script>
+</body>
+</html>
