@@ -28,6 +28,15 @@ const buildContent = {
                                 <span class="avatar-hint">Click to upload</span>
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label>Your Background Image</label>
+                            <div class="background-upload">
+                                <div class="background-preview" id="backgroundPreview" onclick="document.getElementById('userBackground').click()">
+                                    <span class="background-hint">Click to upload background image</span>
+                                </div>
+                                <input type="file" id="userBackground" accept="image/*">
+                            </div>
+                        </div>
                         <button class="submit-button" id="submitUserInfo">Create Your Site</button>
                     </div>
 
@@ -35,6 +44,7 @@ const buildContent = {
                     <div class="build-status" id="buildStatus" style="display: none;">
                         <div class="build-progress">
                             <div class="build-step">Uploading avatar...</div>
+                            <div class="build-step">Uploading background...</div>
                             <div class="build-step">Creating your profile...</div>
                             <div class="build-step">Copying layout...</div>
                             <div class="build-step">Creating your site...</div>
@@ -317,6 +327,76 @@ const buildContent = {
         .submit-button:active {
             transform: translateY(0);
         }
+
+        /* Background upload styles */
+        .background-upload {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .background-preview {
+            width: 100%;
+            height: 120px;
+            border-radius: var(--border-radius);
+            background: var(--background-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 2px dashed var(--border);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .background-preview:hover {
+            border-color: var(--primary);
+            background: var(--background);
+        }
+
+        .background-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .background-preview:empty::before {
+            content: "🖼️";
+            font-size: 32px;
+            color: var(--text-secondary);
+        }
+
+        .background-hint {
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        .upload-status {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: var(--spacing-xs);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: var(--font-size-sm);
+            text-align: center;
+        }
+
+        .upload-status.success {
+            background: rgba(0, 128, 0, 0.7);
+        }
+
+        .upload-status.error {
+            background: rgba(255, 0, 0, 0.7);
+        }
+
+        .avatar-preview,
+        .background-preview {
+            position: relative;
+            overflow: hidden;
+        }
     `,
     js: `
         const buildWidget = {
@@ -324,7 +404,13 @@ const buildContent = {
             state: {
                 isBuilding: false,
                 avatarFile: null,
-                avatarPreview: null
+                avatarPreview: null,
+                backgroundFile: null,
+                backgroundPreview: null,
+                uploadStatus: {
+                    avatar: false,
+                    background: false
+                }
             },
 
             init() {
@@ -338,9 +424,11 @@ const buildContent = {
                     userIntro: document.getElementById('userIntro'),
                     userAvatar: document.getElementById('userAvatar'),
                     avatarPreview: document.getElementById('avatarPreview'),
+                    backgroundPreview: document.getElementById('backgroundPreview'),
                     submitButton: document.getElementById('submitUserInfo'),
                     siteLink: document.getElementById('siteLink'),
-                    copyLink: document.getElementById('copyLink')
+                    copyLink: document.getElementById('copyLink'),
+                    userBackground: document.getElementById('userBackground')
                 };
 
                 if (!this.elements.button) return;
@@ -356,21 +444,40 @@ const buildContent = {
                     }
                 });
                 
-                // Avatar preview
+                // Avatar preview and upload status
                 this.elements.userAvatar.addEventListener('change', (e) => {
                     const file = e.target.files[0];
                     if (file) {
                         this.state.avatarFile = file;
+                        this.state.uploadStatus.avatar = false;
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             this.state.avatarPreview = e.target.result;
-                            this.elements.avatarPreview.innerHTML = \`<img src="\${e.target.result}" alt="Preview">\`;
+                            this.elements.avatarPreview.innerHTML = 
+                                '<img src="' + e.target.result + '" alt="Preview">' +
+                                '<div class="upload-status">Ready to upload</div>';
                         };
                         reader.readAsDataURL(file);
                     }
                 });
 
-                // Form submission
+                // Background preview and upload status
+                this.elements.userBackground.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        this.state.backgroundFile = file;
+                        this.state.uploadStatus.background = false;
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            this.state.backgroundPreview = e.target.result;
+                            this.elements.backgroundPreview.innerHTML = 
+                                '<img src="' + e.target.result + '" alt="Background Preview">' +
+                                '<div class="upload-status">Ready to upload</div>';
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+
                 this.elements.submitButton.addEventListener('click', () => this.startBuild());
             },
 
@@ -384,8 +491,8 @@ const buildContent = {
                 const name = this.elements.userName.value.trim();
                 const intro = this.elements.userIntro.value.trim();
                 
-                if (!name || !intro || !this.state.avatarFile) {
-                    this.showError('Please fill in all fields and upload an avatar');
+                if (!name || !intro || !this.state.avatarFile || !this.state.backgroundFile) {
+                    this.showError('Please fill in all fields and upload both avatar and background image');
                     return;
                 }
 
@@ -396,33 +503,23 @@ const buildContent = {
                 try {
                     // Step 1: Upload avatar
                     await this.updateStep(0);
-                    
-                    // 直接使用 uploadFile 方法上传图片文件
-                    const avatarReceipt = await window.irysUploader.uploadFile(this.state.avatarFile, {
-                        tags: [
-                            { name: 'Content-Type', value: this.state.avatarFile.type },
-                            { name: 'App-Name', value: 'web4' },
-                            { name: 'Type', value: 'avatar' }
-                        ]
-                    });
-                    
-                    const avatarUrl = 'https://uploader.irys.xyz/' + avatarReceipt.id;
-                    console.log('Avatar uploaded:', avatarUrl);
+                    const avatarUrl = await this.uploadImage(this.state.avatarFile, 'avatar');
 
-                    // Step 2: Create title widget
+                    // Step 2: Upload background
                     await this.updateStep(1);
-                    const titleTemplate = await this.getTitleTemplate();
-                    console.log('Got title template');
+                    const backgroundUrl = await this.uploadImage(this.state.backgroundFile, 'background');
 
-                    // 创建新的 title widget
+                    // Step 3: Create title widget
+                    await this.updateStep(2);
+                    const titleTemplate = await this.getTitleTemplate();
                     const newTitleWidget = this.createTitleWidget(titleTemplate, {
                         avatarUrl,
+                        backgroundUrl,
                         name,
                         intro
                     });
-                    console.log('Created new title widget');
-                    
-                    // 上传新的 title widget
+
+                    // Upload the new title widget
                     const titleReceipt = await window.irysUploader.upload(JSON.stringify(newTitleWidget), {
                         tags: [
                             { name: 'Content-Type', value: 'application/json' },
@@ -432,10 +529,9 @@ const buildContent = {
                             { name: 'Owner', value: window.solana.publicKey.toString() }
                         ]
                     });
-                    console.log('Uploaded new title widget:', titleReceipt.id);
 
-                    // Step 3: Copy and modify layout
-                    await this.updateStep(2);
+                    // Step 4: Copy and modify layout
+                    await this.updateStep(3);
                     const layoutResponse = await fetch('https://gateway.irys.xyz/De6yYePMPZjK9mnb4zUU464jeYJQGVVpLgk1Si1McnnZ');
                     const originalLayout = await layoutResponse.json();
                     
@@ -458,8 +554,8 @@ const buildContent = {
                         ]
                     });
 
-                    // Step 4: Create site
-                    await this.updateStep(3);
+                    // Step 5: Create site
+                    await this.updateStep(4);
                     const templateResponse = await fetch('https://gateway.irys.xyz/CJn6d9J6B4PXQctXJXAYusSSqUKh7LEhbukYAwwxTWt4');
                     const templateData = await templateResponse.json();
                     
@@ -504,6 +600,10 @@ const buildContent = {
                     .replace(
                         'https://uploader.irys.xyz/DaZ5aaRJURtmSL2Bzo9Gi3FeyFpYtNMWiLNwfYQsDdnb', 
                         userData.avatarUrl
+                    )
+                    .replace(
+                        'https://uploader.irys.xyz/6jZ6U1BANTUG8crQjRoXBi8F6o3rFoEoBaXXrg8SbTeW',
+                        userData.backgroundUrl
                     )
                     .replace('Heinz', userData.name)
                     .replace('Hello', userData.intro);
@@ -562,6 +662,45 @@ const buildContent = {
                 } catch (error) {
                     console.error('Failed to copy:', error);
                 }
+            },
+
+            // New helper methods for upload handling
+            async uploadImage(file, type) {
+                try {
+                    const receipt = await window.irysUploader.uploadFile(file, {
+                        tags: [
+                            { name: 'Content-Type', value: file.type },
+                            { name: 'App-Name', value: 'web4' },
+                            { name: 'Type', value: type }
+                        ]
+                    });
+                    
+                    const url = 'https://uploader.irys.xyz/' + receipt.id;
+                    this.updateUploadStatus(type, true, url);
+                    return url;
+                } catch (error) {
+                    this.updateUploadStatus(type, false);
+                    throw error;
+                }
+            },
+
+            updateUploadStatus(type, success, url = '') {
+                this.state.uploadStatus[type] = success;
+                
+                const previewElement = type === 'avatar' ? 
+                    this.elements.avatarPreview : 
+                    this.elements.backgroundPreview;
+
+                const statusElement = previewElement.querySelector('.upload-status');
+                if (statusElement) {
+                    if (success) {
+                        statusElement.innerHTML = '✅ Uploaded';
+                        statusElement.classList.add('success');
+                    } else {
+                        statusElement.innerHTML = '❌ Failed';
+                        statusElement.classList.add('error');
+                    }
+                }
             }
         };
 
@@ -569,6 +708,38 @@ const buildContent = {
         buildWidget.init();
     `
 };
+
+// Add these CSS styles
+const additionalCSS = `
+    .upload-status {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: var(--spacing-xs);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        font-size: var(--font-size-sm);
+        text-align: center;
+    }
+
+    .upload-status.success {
+        background: rgba(0, 128, 0, 0.7);
+    }
+
+    .upload-status.error {
+        background: rgba(255, 0, 0, 0.7);
+    }
+
+    .avatar-preview,
+    .background-preview {
+        position: relative;
+        overflow: hidden;
+    }
+`;
+
+// Update the CSS
+buildContent.css += additionalCSS;
 
 // Export the widget for both CommonJS and browser environments
 if (typeof module !== 'undefined' && module.exports) {
